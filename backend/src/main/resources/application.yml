@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: minisocial
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/minisocial}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+      timeout: 2000
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:your-secret-key-change-in-production-min-256-bits}
+  expiration: 86400000 # 24 hours in milliseconds
+
+# Backblaze B2 Configuration
+b2:
+  endpoint: ${B2_ENDPOINT:}
+  accessKeyId: ${B2_ACCESS_KEY_ID:}
+  secretAccessKey: ${B2_SECRET_ACCESS_KEY:}
+  bucketName: ${B2_BUCKET_NAME:}
+
+# Async Configuration
+async:
+  corePoolSize: ${ASYNC_CORE_POOL_SIZE:5}
+  maxPoolSize: ${ASYNC_MAX_POOL_SIZE:10}
+  queueCapacity: ${ASYNC_QUEUE_CAPACITY:100}
+  threadNamePrefix: "async-"
+
+# Server Configuration
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: always
+    include-binding-errors: always
+
+# Logging
+logging:
+  level:
+    com.minisocial: INFO
+    org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG
