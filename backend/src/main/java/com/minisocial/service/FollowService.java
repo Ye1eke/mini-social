@@ -15,4 +15,6 @@ public interface FollowService {
      * @return FollowResponse containing the follow relationship details
      */
     FollowResponse followUser(Long followerId, Long targetUserId);
+
+    void unfollowUser(Long followerId, Long targetUserId);
 }

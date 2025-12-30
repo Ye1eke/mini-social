@@ -36,44 +36,56 @@ public class FollowServiceImpl implements FollowService {
     @Override
     @Transactional
     public FollowResponse followUser(Long followerId, Long targetUserId) {
-        logger.info("User {} attempting to follow user {}", followerId, targetUserId);
-
-        // Check if follow relationship already exists
-        if (followRepository.existsByFollowerIdAndFollowingId(followerId, targetUserId)) {
-            logger.warn("Follow relationship already exists between {} and {}", followerId, targetUserId);
-            throw new ResourceConflictException("You are already following this user");
+        if (followerId.equals(targetUserId)) {
+            throw new IllegalArgumentException("You can't follow yourself");
         }
 
-        // Check if target user exists
+        // Check users exist
         User targetUser = userRepository.findById(targetUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Target user not found with ID: " + targetUserId));
-
-        // Check if follower exists
         User follower = userRepository.findById(followerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Follower user not found with ID: " + followerId));
 
-        // Create follow relationship
-        Follow follow = new Follow(follower, targetUser);
-        Follow savedFollow = followRepository.save(follow);
-        logger.info("Created follow relationship with ID: {}", savedFollow.getId());
+        // Fast pre-check (still keep DB constraint for race safety)
+        if (followRepository.existsByFollower_IdAndFollowing_Id(followerId, targetUserId)) {
+            throw new ResourceConflictException("You are already following this user");
+        }
 
-        // Update follower and following counts
-        follower.setFollowingCount(follower.getFollowingCount() + 1);
-        targetUser.setFollowerCount(targetUser.getFollowerCount() + 1);
-        userRepository.save(follower);
-        userRepository.save(targetUser);
-        logger.info("Updated follower counts: follower {} now following {}, target {} now has {} followers",
-                followerId, follower.getFollowingCount(), targetUserId, targetUser.getFollowerCount());
+        try {
+            Follow saved = followRepository.save(new Follow(follower, targetUser));
 
-        // Trigger async feed rebuild
+            userRepository.incFollowing(followerId);
+            userRepository.incFollowers(targetUserId);
+
+            feedBuilder.rebuildFeed(followerId);
+
+            return new FollowResponse(
+                    followerId,
+                    targetUserId,
+                    saved.getCreatedAt()
+            );
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // if 2 requests hit at the same time, unique constraint may trigger here
+            throw new ResourceConflictException("You are already following this user");
+        }
+    }
+
+    @Override
+    @Transactional
+    public void unfollowUser(Long followerId, Long targetUserId) {
+        if (followerId.equals(targetUserId)) {
+            throw new IllegalArgumentException("You can't unfollow yourself");
+        }
+
+        // delete row
+        int deleted = followRepository.deleteByFollowerIdAndFollowingId(followerId, targetUserId);
+        if (deleted == 0) {
+            throw new ResourceNotFoundException("Follow relationship not found");
+        }
+
+        userRepository.decFollowing(followerId);
+        userRepository.decFollowers(targetUserId);
+
         feedBuilder.rebuildFeed(followerId);
-        logger.info("Triggered async feed rebuild for user ID: {}", followerId);
-
-        // Return response
-        return new FollowResponse(
-                savedFollow.getFollower().getId(),
-                savedFollow.getFollowing().getId(),
-                savedFollow.getCreatedAt()
-        );
     }
 }
