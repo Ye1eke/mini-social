@@ -2,7 +2,7 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import api, { authApi } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import type {
   LoginRequest,
@@ -19,16 +19,25 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    e.stopPropagation();
+
     setError("");
+
+    // Validate password length
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters long");
+      return;
+    }
+
     setLoading(true);
 
     try {
       if (isLogin) {
         // Login flow
         const loginData: LoginRequest = { email, password };
-        const response = await api.post<LoginResponse>(
+        const response = await authApi.post<LoginResponse>(
           "/auth/login",
           loginData
         );
@@ -41,11 +50,11 @@ export default function LoginPage() {
       } else {
         // Registration flow
         const registerData: RegisterRequest = { email, password };
-        await api.post<RegisterResponse>("/auth/register", registerData);
+        await authApi.post<RegisterResponse>("/auth/register", registerData);
 
         // After successful registration, automatically log in
         const loginData: LoginRequest = { email, password };
-        const response = await api.post<LoginResponse>(
+        const response = await authApi.post<LoginResponse>(
           "/auth/login",
           loginData
         );
@@ -103,7 +112,7 @@ export default function LoginPage() {
           </h2>
         </div>
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit} noValidate>
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
               <label htmlFor="email" className="sr-only">

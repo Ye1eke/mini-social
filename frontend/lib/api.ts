@@ -15,6 +15,13 @@ const api = axios.create({
   },
 });
 
+export const authApi = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080",
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
 /**
  * Request interceptor - automatically attaches JWT token to all requests
  */
@@ -39,7 +46,10 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       clearToken();
-      if (typeof window !== "undefined") {
+      if (
+        typeof window !== "undefined" &&
+        !window.location.pathname.includes("/login")
+      ) {
         window.location.href = "/login";
       }
     }

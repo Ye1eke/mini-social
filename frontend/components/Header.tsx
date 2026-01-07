@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { logout, getToken } from "@/lib/auth";
+import { logout, getToken, isAuthenticated } from "@/lib/auth";
 import { useEffect, useState } from "react";
 
 /**
@@ -10,20 +10,36 @@ import { useEffect, useState } from "react";
  */
 export default function Header() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    // Extract email from JWT token
-    const token = getToken();
-    if (token) {
-      try {
-        // JWT format: header.payload.signature
-        const payload = token.split(".")[1];
-        const decodedPayload = JSON.parse(atob(payload));
-        setUserEmail(decodedPayload.sub || decodedPayload.email || null);
-      } catch (error) {
-        console.error("Failed to decode JWT token:", error);
+    const checkAuthStatus = () => {
+      const authenticated = isAuthenticated();
+      setIsLoggedIn(authenticated);
+
+      if (authenticated) {
+        const token = getToken();
+        if (token) {
+          try {
+            const payload = token.split(".")[1];
+            const decodedPayload = JSON.parse(atob(payload));
+            setUserEmail(decodedPayload.sub || decodedPayload.email || null);
+          } catch (error) {
+            console.error("Failed to decode JWT token:", error);
+          }
+        }
+      } else {
+        setUserEmail(null);
       }
-    }
+    };
+
+    checkAuthStatus();
+
+    const interval = setInterval(checkAuthStatus, 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
   }, []);
 
   const handleLogout = () => {
@@ -41,36 +57,38 @@ export default function Header() {
             </Link>
           </div>
 
-          {/* Navigation Links */}
-          <nav className="flex items-center space-x-4">
-            <Link
-              href="/feed"
-              className="rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-            >
-              Feed
-            </Link>
-            <Link
-              href="/post"
-              className="rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-            >
-              Create Post
-            </Link>
-          </nav>
+          {isLoggedIn && (
+            <nav className="flex items-center space-x-4">
+              <Link
+                href="/feed"
+                className="rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+              >
+                Feed
+              </Link>
+              <Link
+                href="/post"
+                className="rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+              >
+                Create Post
+              </Link>
+            </nav>
+          )}
 
-          {/* User Info and Logout */}
-          <div className="flex items-center space-x-4">
-            {userEmail && (
-              <span className="hidden text-sm text-gray-600 sm:inline">
-                {userEmail}
-              </span>
-            )}
-            <button
-              onClick={handleLogout}
-              className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
-            >
-              Logout
-            </button>
-          </div>
+          {isLoggedIn && (
+            <div className="flex items-center space-x-4">
+              {userEmail && (
+                <span className="hidden text-sm text-gray-600 sm:inline">
+                  {userEmail}
+                </span>
+              )}
+              <button
+                onClick={handleLogout}
+                className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
+              >
+                Logout
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>
