@@ -77,9 +77,12 @@ export default function Header() {
           {isLoggedIn && (
             <div className="flex items-center space-x-4">
               {userEmail && (
-                <span className="hidden text-sm text-gray-600 sm:inline">
+                <Link
+                  href="/profile"
+                  className="hidden text-sm text-gray-600 hover:text-gray-900 hover:underline sm:inline"
+                >
                   {userEmail}
-                </span>
+                </Link>
               )}
               <button
                 onClick={handleLogout}

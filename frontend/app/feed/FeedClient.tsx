@@ -174,7 +174,7 @@ export default function FeedClient({
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold text-gray-900">Your Feed</h1>
+      <h1 className="mb-6 text-2xl font-bold text-gray-200">Your Feed</h1>
 
       {/* Posts List */}
       <div className="space-y-6">

@@ -58,3 +58,32 @@ api.interceptors.response.use(
 );
 
 export default api;
+/**
+ * Follow a user
+ */
+export const followUser = async (targetUserId: number): Promise<void> => {
+  await api.post("/follow", { targetUserId });
+};
+
+/**
+ * Unfollow a user
+ */
+export const unfollowUser = async (targetUserId: number): Promise<void> => {
+  await api.delete(`/follow/${targetUserId}`);
+};
+
+/**
+ * Check if current user is following a specific user
+ */
+export const checkFollowStatus = async (
+  targetUserId: number
+): Promise<boolean> => {
+  try {
+    const response = await api.get(`/follow/status/${targetUserId}`);
+    return response.data.isFollowing;
+  } catch (error) {
+    // If endpoint doesn't exist, we'll handle this gracefully
+    console.warn("Follow status check not available");
+    return false;
+  }
+};

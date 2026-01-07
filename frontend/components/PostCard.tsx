@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { FeedItem } from "@/types";
 
 interface PostCardProps {
@@ -56,17 +57,22 @@ export default function PostCard({ post }: PostCardProps) {
     <article className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
       {/* Author Info */}
       <div className="mb-4 flex items-center">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-300 text-sm font-semibold text-gray-700">
-          {post.authorId.toString().slice(-2)}
-        </div>
-        <div className="ml-3">
-          <p className="text-sm font-medium text-gray-900">
-            User {post.authorId}
-          </p>
-          <p className="text-xs text-gray-500">
-            {formatRelativeTime(post.createdAt)}
-          </p>
-        </div>
+        <Link
+          href={`/user/${post.authorId}`}
+          className="flex items-center hover:opacity-80 transition-opacity"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-300 text-sm font-semibold text-gray-700">
+            {post.authorId.toString().slice(-2)}
+          </div>
+          <div className="ml-3">
+            <p className="text-sm font-medium text-gray-900 hover:underline">
+              User {post.authorId}
+            </p>
+            <p className="text-xs text-gray-500">
+              {formatRelativeTime(post.createdAt)}
+            </p>
+          </div>
+        </Link>
       </div>
 
       {/* Post Content */}
