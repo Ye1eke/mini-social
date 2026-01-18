@@ -58,3 +58,5 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 - **next.config.ts**: Configures image domains for Backblaze B2 and environment variables
 - **tailwind.config.js**: Tailwind CSS configuration (managed by Next.js 14+)
 - **tsconfig.json**: TypeScript configuration
+
+++me
