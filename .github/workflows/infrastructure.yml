@@ -20,7 +20,7 @@ jobs:
   detect-changes:
     name: Detect Infrastructure Changes
     runs-on: ubuntu-latest
-    environment: AWS # Use existing AWS environment
+    # Don't require AWS environment for this job - just reading config
     outputs:
       regions: ${{ steps.get-regions.outputs.regions }}
       has-changes: ${{ steps.check-changes.outputs.has-changes }}
@@ -38,7 +38,7 @@ jobs:
       - name: Get regions from config
         id: get-regions
         run: |
-          REGIONS=$(jq -c '.regions' infrastructure/cdk.json)
+          REGIONS=$(jq -c '.context.regions' infrastructure/cdk.json)
           echo "regions=$REGIONS" >> $GITHUB_OUTPUT
           echo "📍 Regions to deploy: $REGIONS"
 
