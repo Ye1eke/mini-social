@@ -244,6 +244,62 @@ EOF
   
   echo ""
   print_info "Updating Route 53..."
+  
+  # First, try to delete existing non-latency records if they exist
+  print_info "Checking for existing non-latency records..."
+  EXISTING_RECORDS=$(aws route53 list-resource-record-sets \
+    --hosted-zone-id "$HOSTED_ZONE_ID" \
+    --query "ResourceRecordSets[?Name=='$DOMAIN.' && Type=='A' && !SetIdentifier]" \
+    --output json)
+  
+  if [ "$EXISTING_RECORDS" != "[]" ]; then
+    print_warning "Found existing non-latency record, converting to latency-based..."
+    
+    # Get the existing record details
+    EXISTING_DNS=$(echo "$EXISTING_RECORDS" | jq -r '.[0].AliasTarget.DNSName')
+    EXISTING_ZONE=$(echo "$EXISTING_RECORDS" | jq -r '.[0].AliasTarget.HostedZoneId')
+    
+    # Delete the old record
+    cat > /tmp/route53-delete.json <<EOF
+{
+  "Comment": "Delete non-latency record before creating latency-based",
+  "Changes": [
+    {
+      "Action": "DELETE",
+      "ResourceRecordSet": {
+        "Name": "$DOMAIN",
+        "Type": "A",
+        "AliasTarget": {
+          "HostedZoneId": "$EXISTING_ZONE",
+          "DNSName": "$EXISTING_DNS",
+          "EvaluateTargetHealth": true
+        }
+      }
+    },
+    {
+      "Action": "DELETE",
+      "ResourceRecordSet": {
+        "Name": "$DOMAIN",
+        "Type": "AAAA",
+        "AliasTarget": {
+          "HostedZoneId": "$EXISTING_ZONE",
+          "DNSName": "$EXISTING_DNS",
+          "EvaluateTargetHealth": true
+        }
+      }
+    }
+  ]
+}
+EOF
+    
+    aws route53 change-resource-record-sets \
+      --hosted-zone-id "$HOSTED_ZONE_ID" \
+      --change-batch file:///tmp/route53-delete.json 2>/dev/null || print_warning "Could not delete old records (might not exist)"
+    
+    print_info "Waiting for DNS propagation..."
+    sleep 5
+  fi
+  
   aws route53 change-resource-record-sets \
     --hosted-zone-id "$HOSTED_ZONE_ID" \
     --change-batch file:///tmp/route53-latency.json
@@ -354,4 +410,3 @@ case "${1:-help}" in
     exit 1
     ;;
 esac
-EOF
