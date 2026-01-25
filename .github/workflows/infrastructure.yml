@@ -37,9 +37,8 @@ jobs:
 
       - name: Get regions from config
         id: get-regions
-        working-directory: infrastructure
         run: |
-          REGIONS=$(node -e "console.log(JSON.stringify(require('./cdk.json').regions))")
+          REGIONS=$(jq -c '.regions' infrastructure/cdk.json)
           echo "regions=$REGIONS" >> $GITHUB_OUTPUT
           echo "📍 Regions to deploy: $REGIONS"
 
