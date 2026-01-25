@@ -209,6 +209,43 @@ jobs:
           # Get regions from config
           REGIONS='${{ needs.detect-changes.outputs.regions }}'
 
+          # First, delete any existing records to start fresh
+          echo "🧹 Cleaning up existing records..."
+          EXISTING=$(aws route53 list-resource-record-sets \
+            --hosted-zone-id "$HOSTED_ZONE_ID" \
+            --query "ResourceRecordSets[?Name=='$DOMAIN.']" \
+            --output json)
+
+          if [ "$(echo "$EXISTING" | jq '. | length')" -gt 0 ]; then
+            echo "📝 Found existing records, deleting..."
+            
+            # Build delete batch
+            cat > /tmp/route53-delete.json << 'DELEOF'
+          {
+            "Comment": "Delete existing records before update",
+            "Changes": [
+          DELEOF
+            
+            FIRST_DEL=true
+            echo "$EXISTING" | jq -c '.[]' | while read -r record; do
+              if [ "$FIRST_DEL" = false ]; then
+                echo "," >> /tmp/route53-delete.json
+              fi
+              FIRST_DEL=false
+              
+              echo "$record" | jq '{Action: "DELETE", ResourceRecordSet: .}' >> /tmp/route53-delete.json
+            done
+            
+            echo "]}" >> /tmp/route53-delete.json
+            
+            aws route53 change-resource-record-sets \
+              --hosted-zone-id "$HOSTED_ZONE_ID" \
+              --change-batch file:///tmp/route53-delete.json 2>/dev/null || echo "⚠️  Could not delete (might not exist)"
+            
+            echo "⏳ Waiting for DNS propagation..."
+            sleep 10
+          fi
+
           # Start building Route 53 change batch
           cat > /tmp/route53-changes.json << 'EOF'
           {
