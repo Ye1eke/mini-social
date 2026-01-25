@@ -50,7 +50,7 @@ jobs:
   deploy-infrastructure:
     name: Deploy to ${{ matrix.region }}
     runs-on: ubuntu-latest
-    environment: AWS # Use existing AWS environment
+    # Use repository secrets instead of environment
     needs: detect-changes
     if: needs.detect-changes.outputs.has-changes == 'true'
     strategy:
@@ -167,7 +167,7 @@ jobs:
   update-route53:
     name: Update Route 53 (Latency Routing)
     runs-on: ubuntu-latest
-    environment: AWS # Use existing AWS environment
+    # Use repository secrets instead of environment
     needs: [detect-changes, deploy-infrastructure]
     if: needs.detect-changes.outputs.has-changes == 'true'
     steps:

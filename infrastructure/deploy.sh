@@ -57,6 +57,17 @@ deploy_region() {
   print_info "Environment: $env_name"
   echo ""
   
+  # Check if region is bootstrapped
+  print_info "Checking if region is bootstrapped..."
+  if ! aws ssm get-parameter --name /cdk-bootstrap/hnb659fds/version --region "$region" >/dev/null 2>&1; then
+    print_warning "Region not bootstrapped, bootstrapping now..."
+    cdk bootstrap "aws://$(aws sts get-caller-identity --query Account --output text)/$region"
+    print_success "Region bootstrapped!"
+  else
+    print_success "Region already bootstrapped"
+  fi
+  echo ""
+  
   # Deploy with CDK
   cdk deploy "$stack_name" --require-approval never
   
