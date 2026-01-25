@@ -12,9 +12,9 @@ const app = new cdk.App();
 const backend = app.node.tryGetContext("backend");
 if (!backend) throw new Error("Missing context.backend in cdk.json");
 
-// Get region from context or fall back to default
-const region =
-  app.node.tryGetContext("region") || process.env.CDK_DEFAULT_REGION;
+// Get regions from context
+const regions = app.node.tryGetContext("regions") || ["eu-central-1"];
+const primaryRegion = app.node.tryGetContext("primaryRegion") || regions[0];
 
 // Override env variables from .env file if they exist
 if (backend.env) {
@@ -30,14 +30,34 @@ if (backend.env) {
     B2_SECRET_ACCESS_KEY:
       process.env.B2_SECRET_ACCESS_KEY || backend.env.B2_SECRET_ACCESS_KEY,
     B2_BUCKET_NAME: process.env.B2_BUCKET_NAME || backend.env.B2_BUCKET_NAME,
-    SERVER_PORT: process.env.SERVER_PORT || backend.env.SERVER_PORT || "5000",
+    SERVER_PORT: process.env.SERVER_PORT || backend.env.SERVER_PORT || "8080",
   };
 }
 
-new MiniSocialStack(app, "MiniSocialBackendEb", {
-  env: {
-    account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: region,
-  },
-  config: backend,
+// Deploy to each region
+regions.forEach((region: string) => {
+  const isPrimary = region === primaryRegion;
+  const regionShort = region.replace(/-/g, ""); // eu-central-1 → eucentral1
+
+  // Customize environment name per region
+  const regionConfig = {
+    ...backend,
+    environmentName: `${backend.environmentName}-${regionShort}`,
+  };
+
+  new MiniSocialStack(app, `MiniSocialBackendEb-${regionShort}`, {
+    env: {
+      account: process.env.CDK_DEFAULT_ACCOUNT,
+      region: region,
+    },
+    config: regionConfig,
+    stackName: `MiniSocialBackendEb-${regionShort}`,
+    description: `MiniSocial backend in ${region} ${isPrimary ? "(Primary)" : "(Secondary)"}`,
+    tags: {
+      Region: region,
+      Type: isPrimary ? "Primary" : "Secondary",
+      Project: "MiniSocial",
+      ManagedBy: "CDK",
+    },
+  });
 });

@@ -15,13 +15,14 @@
     ]
   },
   "context": {
-    "region": "eu-central-1",
+    "regions": ["eu-central-1", "us-east-1"],
+    "primaryRegion": "eu-central-1",
     "backend": {
       "applicationName": "minisocial",
       "environmentName": "minisocial-backend-cdk",
       "solutionStackName": "64bit Amazon Linux 2023 v4.8.2 running Corretto 17",
       "certificateArn": "",
-      "appPort": "8080",
+      "appPort": "5000",
       "env": {
         "SPRING_DATASOURCE_URL": "placeholder",
         "DB_USERNAME": "placeholder",

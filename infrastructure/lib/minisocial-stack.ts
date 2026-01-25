@@ -45,10 +45,9 @@ export class MiniSocialStack extends cdk.Stack {
       },
     );
 
-    // EB Application
-    const app = new eb.CfnApplication(this, "EbApp", {
-      applicationName: cfg.applicationName,
-    });
+    // Import existing EB Application or create new one
+    // Use the application name directly - EB will use existing if it exists
+    const appName = cfg.applicationName;
 
     // EB Option Settings - Let EB manage security groups
     const optionSettings: eb.CfnEnvironment.OptionSettingProperty[] = [
@@ -112,16 +111,14 @@ export class MiniSocialStack extends cdk.Stack {
     // EB Environment
     const env = new eb.CfnEnvironment(this, "EbEnv", {
       environmentName: cfg.environmentName,
-      applicationName: app.applicationName!,
+      applicationName: appName,
       solutionStackName: cfg.solutionStackName,
       optionSettings,
     });
 
-    env.addDependency(app);
-
     new cdk.CfnOutput(this, "EnvironmentName", { value: cfg.environmentName });
     new cdk.CfnOutput(this, "EnvironmentUrl", {
-      value: `http://${cfg.environmentName}.eba-XXXXXXXX.eu-central-1.elasticbeanstalk.com`,
+      value: `http://${cfg.environmentName}.eba-XXXXXXXX.${this.region}.elasticbeanstalk.com`,
       description: "Application URL (will be available after deployment)",
     });
   }
