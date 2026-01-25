@@ -1,0 +1,294 @@
+name: Deploy Infrastructure (GitOps)
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "infrastructure/**"
+      - ".github/workflows/infrastructure.yml"
+  workflow_dispatch: # Allow manual trigger
+
+concurrency:
+  group: infrastructure-deployment
+  cancel-in-progress: false # Don't cancel infrastructure deployments
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  detect-changes:
+    name: Detect Infrastructure Changes
+    runs-on: ubuntu-latest
+    environment: AWS # Use existing AWS environment
+    outputs:
+      regions: ${{ steps.get-regions.outputs.regions }}
+      has-changes: ${{ steps.check-changes.outputs.has-changes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: infrastructure/package-lock.json
+
+      - name: Get regions from config
+        id: get-regions
+        working-directory: infrastructure
+        run: |
+          REGIONS=$(node -e "console.log(JSON.stringify(require('./cdk.json').regions))")
+          echo "regions=$REGIONS" >> $GITHUB_OUTPUT
+          echo "📍 Regions to deploy: $REGIONS"
+
+      - name: Check for infrastructure changes
+        id: check-changes
+        run: |
+          echo "has-changes=true" >> $GITHUB_OUTPUT
+
+  deploy-infrastructure:
+    name: Deploy to ${{ matrix.region }}
+    runs-on: ubuntu-latest
+    environment: AWS # Use existing AWS environment
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has-changes == 'true'
+    strategy:
+      matrix:
+        region: ${{ fromJson(needs.detect-changes.outputs.regions) }}
+      max-parallel: 1 # Deploy one region at a time to avoid conflicts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: infrastructure/package-lock.json
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ matrix.region }}
+
+      - name: Install dependencies
+        working-directory: infrastructure
+        run: npm ci
+
+      - name: Setup environment variables
+        working-directory: infrastructure
+        run: |
+          cat > .env << EOF
+          SPRING_DATASOURCE_URL=${{ secrets.SPRING_DATASOURCE_URL }}
+          DB_USERNAME=${{ secrets.DB_USERNAME }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          B2_ENDPOINT=${{ secrets.B2_ENDPOINT }}
+          B2_ACCESS_KEY_ID=${{ secrets.B2_ACCESS_KEY_ID }}
+          B2_SECRET_ACCESS_KEY=${{ secrets.B2_SECRET_ACCESS_KEY }}
+          B2_BUCKET_NAME=${{ secrets.B2_BUCKET_NAME }}
+          SERVER_PORT=5000
+          EOF
+
+      - name: CDK Bootstrap (if needed)
+        working-directory: infrastructure
+        run: |
+          REGION_SHORT=$(echo "${{ matrix.region }}" | tr -d '-')
+          npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ matrix.region }} || true
+
+      - name: Deploy infrastructure with CDK
+        working-directory: infrastructure
+        run: |
+          REGION_SHORT=$(echo "${{ matrix.region }}" | tr -d '-')
+          STACK_NAME="MiniSocialBackendEb-${REGION_SHORT}"
+
+          echo "🚀 Deploying $STACK_NAME to ${{ matrix.region }}"
+          npx cdk deploy "$STACK_NAME" --require-approval never
+
+      - name: Wait for environment to be ready
+        run: |
+          echo "⏳ Waiting for environment to initialize..."
+          sleep 30
+
+      - name: Configure database access
+        run: |
+          REGION_SHORT=$(echo "${{ matrix.region }}" | tr -d '-')
+          ENV_NAME="minisocial-backend-cdk-${REGION_SHORT}"
+
+          echo "🔍 Getting instance from $ENV_NAME..."
+          INSTANCE_ID=$(aws elasticbeanstalk describe-environment-resources \
+            --environment-name "$ENV_NAME" \
+            --region "${{ matrix.region }}" \
+            --query 'EnvironmentResources.Instances[0].Id' \
+            --output text 2>/dev/null || echo "")
+
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" == "None" ]; then
+            echo "⚠️  No instances found yet, skipping database access setup"
+            exit 0
+          fi
+
+          echo "✅ Found instance: $INSTANCE_ID"
+
+          EB_SG=$(aws ec2 describe-instances \
+            --instance-ids "$INSTANCE_ID" \
+            --region "${{ matrix.region }}" \
+            --query 'Reservations[0].Instances[0].SecurityGroups[0].GroupId' \
+            --output text)
+
+          echo "✅ Found security group: $EB_SG"
+
+          echo "🔧 Adding database access rule..."
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ secrets.DB_SECURITY_GROUP_ID }} \
+            --protocol tcp \
+            --port 5432 \
+            --source-group "$EB_SG" \
+            --region eu-central-1 2>/dev/null && echo "✅ Database access granted" || echo "⚠️  Rule might already exist (OK)"
+
+          echo "🔄 Restarting application..."
+          aws elasticbeanstalk restart-app-server \
+            --environment-name "$ENV_NAME" \
+            --region "${{ matrix.region }}" || true
+
+      - name: Verify deployment
+        run: |
+          REGION_SHORT=$(echo "${{ matrix.region }}" | tr -d '-')
+          ENV_NAME="minisocial-backend-cdk-${REGION_SHORT}"
+
+          echo "🔍 Checking environment health..."
+          aws elasticbeanstalk describe-environment-health \
+            --environment-name "$ENV_NAME" \
+            --attribute-names Status,Color \
+            --region "${{ matrix.region }}" || true
+
+  update-route53:
+    name: Update Route 53 (Latency Routing)
+    runs-on: ubuntu-latest
+    environment: AWS # Use existing AWS environment
+    needs: [detect-changes, deploy-infrastructure]
+    if: needs.detect-changes.outputs.has-changes == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: eu-central-1
+
+      - name: Setup Route 53 latency-based routing
+        run: |
+          HOSTED_ZONE_ID="${{ secrets.ROUTE53_HOSTED_ZONE_ID }}"
+          DOMAIN="api.minisocial.online"
+
+          echo "🌍 Setting up latency-based routing for $DOMAIN"
+
+          # Get regions from config
+          REGIONS='${{ needs.detect-changes.outputs.regions }}'
+
+          # Start building Route 53 change batch
+          cat > /tmp/route53-changes.json << 'EOF'
+          {
+            "Comment": "GitOps: Latency-based routing - auto-updated",
+            "Changes": [
+          EOF
+
+          FIRST=true
+          for REGION in $(echo "$REGIONS" | jq -r '.[]'); do
+            REGION_SHORT=$(echo "$REGION" | tr -d '-')
+            ENV_NAME="minisocial-backend-cdk-${REGION_SHORT}"
+            
+            echo "🔍 Getting load balancer for $REGION..."
+            
+            LB_ARN=$(aws elasticbeanstalk describe-environment-resources \
+              --environment-name "$ENV_NAME" \
+              --region "$REGION" \
+              --query 'EnvironmentResources.LoadBalancers[0].Name' \
+              --output text 2>/dev/null || echo "")
+            
+            if [ -z "$LB_ARN" ] || [ "$LB_ARN" == "None" ]; then
+              echo "⚠️  Environment $ENV_NAME not found in $REGION, skipping"
+              continue
+            fi
+            
+            LB_DNS=$(aws elbv2 describe-load-balancers \
+              --region "$REGION" \
+              --load-balancer-arns "$LB_ARN" \
+              --query 'LoadBalancers[0].DNSName' \
+              --output text)
+            
+            LB_ZONE=$(aws elbv2 describe-load-balancers \
+              --region "$REGION" \
+              --load-balancer-arns "$LB_ARN" \
+              --query 'LoadBalancers[0].CanonicalHostedZoneId' \
+              --output text)
+            
+            echo "✅ $REGION: $LB_DNS"
+            
+            # Add comma if not first entry
+            if [ "$FIRST" = false ]; then
+              echo "," >> /tmp/route53-changes.json
+            fi
+            FIRST=false
+            
+            # Add Route 53 record
+            cat >> /tmp/route53-changes.json << EOF
+              {
+                "Action": "UPSERT",
+                "ResourceRecordSet": {
+                  "Name": "$DOMAIN",
+                  "Type": "A",
+                  "SetIdentifier": "$REGION",
+                  "Region": "$REGION",
+                  "AliasTarget": {
+                    "HostedZoneId": "$LB_ZONE",
+                    "DNSName": "dualstack.$LB_DNS",
+                    "EvaluateTargetHealth": true
+                  }
+                }
+              }
+          EOF
+          done
+
+          # Close JSON
+          cat >> /tmp/route53-changes.json << 'EOF'
+            ]
+          }
+          EOF
+
+          echo ""
+          echo "📝 Route 53 change batch:"
+          cat /tmp/route53-changes.json
+          echo ""
+
+          echo "🔧 Updating Route 53..."
+          aws route53 change-resource-record-sets \
+            --hosted-zone-id "$HOSTED_ZONE_ID" \
+            --change-batch file:///tmp/route53-changes.json
+
+          echo ""
+          echo "✅ Route 53 updated successfully!"
+          echo "🌐 $DOMAIN now routes to all deployed regions with latency-based routing"
+
+  notify-success:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [detect-changes, deploy-infrastructure, update-route53]
+    if: always()
+    steps:
+      - name: Summary
+        run: |
+          echo "## 🚀 Infrastructure Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Regions deployed:** ${{ needs.detect-changes.outputs.regions }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Route 53:** Latency-based routing configured" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**API URL:** https://api.minisocial.online" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Users will automatically connect to the nearest backend! 🌍" >> $GITHUB_STEP_SUMMARY

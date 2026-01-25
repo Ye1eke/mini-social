@@ -4,6 +4,8 @@ Infrastructure as Code for MiniSocial using AWS CDK - deploys to multiple region
 
 ## Quick Start
 
+### Option 1: Manual Deployment (Simple)
+
 ```bash
 # 1. Install dependencies
 npm install
@@ -13,11 +15,40 @@ cp .env.example .env
 nano .env
 
 # 3. Deploy to EU region
-cdk deploy MiniSocialBackendEb-eucentral1
+./deploy.sh eu
 
-# 4. (Optional) Deploy to US region
-cdk deploy MiniSocialBackendEb-useast1
+# 4. Setup Route 53 (latency-based routing)
+./deploy.sh route53
+
+# 5. (Optional) Deploy to US region for global coverage
+./deploy.sh us
+./deploy.sh route53
 ```
+
+### Option 2: GitOps Pipeline (Automated) 🚀
+
+**One-time setup:**
+
+1. Add GitHub Secrets (see [GITOPS_SETUP.md](./GITOPS_SETUP.md))
+2. Done!
+
+**Daily usage:**
+
+```bash
+# Edit infrastructure/cdk.json to add regions
+{
+  "regions": ["eu-central-1", "us-east-1", "ap-southeast-1"]
+}
+
+# Push to GitHub
+git push
+
+# ✅ Infrastructure deploys automatically!
+# ✅ Route 53 updates automatically!
+# ✅ Database access configured automatically!
+```
+
+See [GITOPS_SETUP.md](./GITOPS_SETUP.md) for full setup guide.
 
 ---
 
@@ -98,19 +129,32 @@ cdk bootstrap aws://ACCOUNT_ID/us-east-1
 
 ### Deploy Infrastructure
 
+**Use the unified deployment script:**
+
 ```bash
-# Deploy to specific region
-cdk deploy MiniSocialBackendEb-eucentral1
+# Show help
+./deploy.sh help
 
-# Deploy to all regions
-cdk deploy --all
+# Deploy to EU only (recommended to start)
+./deploy.sh eu
 
-# Preview changes (dry run)
-cdk diff
+# Setup Route 53 latency-based routing
+./deploy.sh route53
 
-# Destroy infrastructure
-cdk destroy MiniSocialBackendEb-eucentral1
+# Deploy to all regions (EU + US)
+./deploy.sh all
+
+# Check status
+./deploy.sh status
 ```
+
+**What the script does:**
+
+1. ✅ Deploys infrastructure with CDK
+2. ✅ Configures database security groups automatically
+3. ✅ Restarts application
+4. ✅ Sets up Route 53 latency-based routing
+5. ✅ Shows you next steps
 
 ### Deploy Application
 
@@ -260,27 +304,55 @@ aws elasticbeanstalk describe-environments \
 
 ### 502 Bad Gateway
 
-**Causes:**
+**Most common cause:** Database connection failed
 
-1. App not running on correct port (check SERVER_PORT=5000)
-2. Database connection failed (check security groups)
-3. Application crashed (check logs)
-
-**Fix:**
+**Quick fix:**
 
 ```bash
-# Check logs
+./deploy.sh eu    # This automatically fixes database access
+```
+
+**Manual fix (if needed):**
+
+```bash
+# Get EB security group
+INSTANCE_ID=$(aws elasticbeanstalk describe-environment-resources \
+  --environment-name minisocial-backend-cdk-eucentral1 \
+  --region eu-central-1 \
+  --query 'EnvironmentResources.Instances[0].Id' \
+  --output text)
+
+EB_SG=$(aws ec2 describe-instances \
+  --instance-ids $INSTANCE_ID \
+  --region eu-central-1 \
+  --query 'Reservations[0].Instances[0].SecurityGroups[0].GroupId' \
+  --output text)
+
+# Allow EB to access RDS
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-0f427a8f1823d7e4e \
+  --protocol tcp \
+  --port 5432 \
+  --source-group $EB_SG \
+  --region eu-central-1
+
+# Restart app
+aws elasticbeanstalk restart-app-server \
+  --environment-name minisocial-backend-cdk-eucentral1 \
+  --region eu-central-1
+```
+
+### Check Status
+
+```bash
+# Quick status check
+./deploy.sh status
+
+# Detailed logs
 aws elasticbeanstalk describe-events \
   --environment-name minisocial-backend-cdk-eucentral1 \
   --region eu-central-1 \
   --max-items 20
-
-# Check environment variables
-aws elasticbeanstalk describe-configuration-settings \
-  --environment-name minisocial-backend-cdk-eucentral1 \
-  --application-name minisocial \
-  --region eu-central-1 \
-  --query 'ConfigurationSettings[0].OptionSettings[?Namespace==`aws:elasticbeanstalk:application:environment`]'
 ```
 
 ### Health Check Failing
