@@ -68,6 +68,25 @@ deploy_region() {
   fi
   echo ""
   
+  # Check if EB application exists in this region
+  print_info "Checking if EB application exists..."
+  if ! aws elasticbeanstalk describe-applications \
+    --application-names "minisocial" \
+    --region "$region" \
+    --query 'Applications[0].ApplicationName' \
+    --output text 2>/dev/null | grep -q "minisocial"; then
+    
+    print_warning "EB application not found, creating..."
+    aws elasticbeanstalk create-application \
+      --application-name "minisocial" \
+      --description "MiniSocial Backend Application" \
+      --region "$region"
+    print_success "EB application created"
+  else
+    print_success "EB application already exists"
+  fi
+  echo ""
+  
   # Deploy with CDK
   cdk deploy "$stack_name" --require-approval never
   

@@ -99,6 +99,25 @@ jobs:
           REGION_SHORT=$(echo "${{ matrix.region }}" | tr -d '-')
           npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ matrix.region }} || true
 
+      - name: Create Elastic Beanstalk Application (if needed)
+        run: |
+          echo "🔍 Checking if EB application exists in ${{ matrix.region }}..."
+          if ! aws elasticbeanstalk describe-applications \
+            --application-names minisocial \
+            --region ${{ matrix.region }} \
+            --query 'Applications[0].ApplicationName' \
+            --output text 2>/dev/null | grep -q "minisocial"; then
+            
+            echo "📦 Creating EB application in ${{ matrix.region }}..."
+            aws elasticbeanstalk create-application \
+              --application-name minisocial \
+              --description "MiniSocial Backend Application" \
+              --region ${{ matrix.region }}
+            echo "✅ Application created"
+          else
+            echo "✅ Application already exists"
+          fi
+
       - name: Deploy infrastructure with CDK
         working-directory: infrastructure
         run: |
