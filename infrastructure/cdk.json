@@ -17,11 +17,14 @@
   "context": {
     "regions": ["eu-central-1", "us-east-1"],
     "primaryRegion": "eu-central-1",
+    "certificates": {
+      "eu-central-1": "arn:aws:acm:eu-central-1:805425386074:certificate/6d56bb94-cad3-4527-9542-fbffd10424d1",
+      "us-east-1": "arn:aws:acm:us-east-1:805425386074:certificate/c77a4a7f-2a20-4b9b-9949-2c504f075a77"
+    },
     "backend": {
       "applicationName": "minisocial",
       "environmentName": "minisocial-backend-cdk",
       "solutionStackName": "64bit Amazon Linux 2023 v4.8.2 running Corretto 17",
-      "certificateArn": "",
       "appPort": "5000",
       "env": {
         "SPRING_DATASOURCE_URL": "placeholder",

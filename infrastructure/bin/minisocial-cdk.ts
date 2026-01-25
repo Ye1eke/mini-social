@@ -15,6 +15,7 @@ if (!backend) throw new Error("Missing context.backend in cdk.json");
 // Get regions from context
 const regions = app.node.tryGetContext("regions") || ["eu-central-1"];
 const primaryRegion = app.node.tryGetContext("primaryRegion") || regions[0];
+const certificates = app.node.tryGetContext("certificates") || {};
 
 // Override env variables from .env file if they exist
 if (backend.env) {
@@ -43,6 +44,7 @@ regions.forEach((region: string) => {
   const regionConfig = {
     ...backend,
     environmentName: `${backend.environmentName}-${regionShort}`,
+    certificateArn: certificates[region] || "",
   };
 
   new MiniSocialStack(app, `MiniSocialBackendEb-${regionShort}`, {
