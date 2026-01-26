@@ -83,6 +83,10 @@ jobs:
         run: |
           cat > .env << EOF
           SPRING_DATASOURCE_URL=${{ secrets.SPRING_DATASOURCE_URL }}
+          EU_DATASOURCE_WRITE_URL=${{ secrets.EU_DATASOURCE_WRITE_URL }}
+          EU_DATASOURCE_READ_URL=${{ secrets.EU_DATASOURCE_READ_URL }}
+          US_DATASOURCE_WRITE_URL=${{ secrets.US_DATASOURCE_WRITE_URL }}
+          US_DATASOURCE_READ_URL=${{ secrets.US_DATASOURCE_READ_URL }}
           DB_USERNAME=${{ secrets.DB_USERNAME }}
           DB_PASSWORD=${{ secrets.DB_PASSWORD }}
           JWT_SECRET=${{ secrets.JWT_SECRET }}

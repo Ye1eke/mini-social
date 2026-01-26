@@ -3,10 +3,19 @@ spring:
     name: minisocial
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/minisocial}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
-    driver-class-name: org.postgresql.Driver
+    # Primary datasource (write operations)
+    write:
+      url: ${SPRING_DATASOURCE_WRITE_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/minisocial}}
+      username: ${DB_USERNAME:postgres}
+      password: ${DB_PASSWORD:postgres}
+      driver-class-name: org.postgresql.Driver
+
+    # Read datasource (read operations) - falls back to write if not specified
+    read:
+      url: ${SPRING_DATASOURCE_READ_URL:${SPRING_DATASOURCE_WRITE_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/minisocial}}}
+      username: ${DB_USERNAME:postgres}
+      password: ${DB_PASSWORD:postgres}
+      driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
